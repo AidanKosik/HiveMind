@@ -8,9 +8,14 @@ After doing some brief research I decided the Reinforcement Learning was the pat
 # Deciding on the Action Set
 I limited it to 3 thoughts for the action set to provide the model with. 
   ## 1st:
-      I thought giving it only 5-10 different actions to perform and to start learning with and then slowly develop a bigger action library. As someone who has played SC2 a bit, I realize for a beginning player learning to just play well with some units is better than trying to play with every single unit possible at the beginning.
+      I thought giving it only 5-10 different actions to perform and to start learning with and then slowly 
+      develop a bigger action library. As someone who has played SC2 a bit, I realize for a beginning player
+      learning to just play well with some units is better than trying to play with every single unit 
+      possible at the beginning.
     
   ## 2nd:
-    I thought that giving all of the actions to the model and let it decide, and then after it chooses check if the chosen action was valid.
+    I thought that giving all of the actions to the model and let it decide, and then after it chooses 
+    check if the chosen action was valid.
   ## 3rd:
-    Somehow changing the action set every step so that it can choose from all of the available actions so it is making a valid move every step. 
+    Somehow changing the action set every step so that it can choose from all of the available actions 
+    so it is making a valid move every step. 
