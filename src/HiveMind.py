@@ -214,9 +214,15 @@ class HiveMind(base_agent.BaseAgent):
 
         if smart_action == _ATTACK_MINIMAP:
             if 13 in obs.observation.available_actions:
-                x_offset = random.randint(-1, 1)
-                y_offset = random.randint(-1, 1)
-                return actions.FunctionCall(13, [_NOT_QUEUED, self.transformLocation(int(x) + (x_offset * 8), int(y) + (y_offset * 8))])
+                x = random.randint(0,63)
+                y = random.randint(0,63)
+                return actions.FunctionCall(13, [_NOT_QUEUED, self.transformLocation(int(x), int(y))])
+
+        elif smart_action == _BUILD_SPAWNING_POOL:
+            if 84 in obs.observation.available_actions:
+                x = random.randint(0, 83)
+                y = random.randint(0,83)
+                return actions.FUNCTIONS.Build_SpawningPool_screen("now", (x,y))
 
         elif smart_action in obs.observation.available_actions:
             args = [[np.random.randint(0, size) for size in arg.sizes]
