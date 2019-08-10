@@ -58,21 +58,23 @@ ACTION_ATTACK = 'attack'
 
 SMART_ACTIONS = []
 
-_ATTACK_COORDINATES = []
-
 KILL_UNIT_REWARD = 0.25
 KILL_BUILDING_REWARD = 0.5
 
-for mm_x in range(0,128):
-    for mm_y in range(0,148):
-        SMART_ACTIONS.append("15" +'_' + str(mm_x) + '_' + str(mm_y))
+_NO_SELECTED_UNIT = 0
+_IS_SINGLE_SELECT = 1
+_IS_MULTI_SELECT = 2
+
+# for mm_x in range(0,128):
+#     for mm_y in range(0,148):
+#         SMART_ACTIONS.append("15" +'_' + str(mm_x) + '_' + str(mm_y))
 
 for func in actions._FUNCTIONS:
     string = str(func)
     ls = string.split("/")
     func_id = str(ls[0])
-    if func_id != "15":
-        SMART_ACTIONS.append(func_id)
+    # if func_id != "15":
+    SMART_ACTIONS.append(func_id)
 
 
 class HiveMind(base_agent.BaseAgent):
@@ -83,6 +85,7 @@ class HiveMind(base_agent.BaseAgent):
 
         self.previous_action = None
         self.previous_state = None
+        self.previous_reward = 0
 
         self.base_top_left = None
         
@@ -98,8 +101,10 @@ class HiveMind(base_agent.BaseAgent):
 
         self.reward = 0
 
-        # if os.path.isfile(DATA_FILE + '.gz'):
-        #     self.qlearn.q_table = pd.read_pickle(DATA_FILE + '.gz', compression='gzip')
+        self.moves = {}
+
+        if os.path.isfile(DATA_FILE + '.gz'):
+            self.qlearn.q_table = pd.read_pickle(DATA_FILE + '.gz', compression='gzip')
 
     def transformDistance(self, x, x_distance, y, y_distance):
         if not self.base_top_left:
@@ -112,7 +117,6 @@ class HiveMind(base_agent.BaseAgent):
         return [x,y]
 
     def splitAction(self, action_id):
-        print("Len Attacks: " +str(len(SMART_ACTIONS)) + " Action ID: " + str(action_id))
         smart_action = SMART_ACTIONS[action_id]
 
         x = 0
@@ -133,6 +137,14 @@ class HiveMind(base_agent.BaseAgent):
 
         return False
 
+    def get_unit_type_selected_and_select_type(self, obs):
+        if (len(obs.observation.single_select) > 0):
+            return obs.observation.single_select[0].unit_type, _IS_SINGLE_SELECT
+        if (len(obs.observation.multi_select) > 0):
+            return obs.observation.multi_select[0].unit_type, _IS_MULTI_SELECT
+
+        return 0, _NO_SELECTED_UNIT
+
     def get_units_by_type(self, obs, unit_type):
         return [unit for unit in obs.observation.feature_units if unit.unit_type == unit_type]
 
@@ -142,12 +154,18 @@ class HiveMind(base_agent.BaseAgent):
     def step(self,obs):
         super(HiveMind, self).step(obs)
 
+        if obs.last():
+            self.qlearn.q_table.to_pickle(DATA_FILE + '.gz', 'gzip')
+            f = open("results.txt", "a+")
+            f.write("Results: " + str(self.moves) + "\nScore: " + str(self.reward) + "\n\n")
+            f.close()
+
         if obs.first():
             player_y, player_x = (obs.observation.feature_minimap.player_relative == _PLAYER_SELF).nonzero()
             self.base_top_left = 1 if player_y.any() <= 31 else 0
 
         # Gather State Information
-        current_state = np.zeros(10)
+        current_state = np.zeros(12)
         player_info = obs.observation['player']
         current_state[0] = player_info[1]       # Minerals
         current_state[1] = player_info[2]       # Vespene
@@ -155,6 +173,9 @@ class HiveMind(base_agent.BaseAgent):
         current_state[3] = player_info[4]       # Worker Supply
         current_state[4] = player_info[8]       # Army Count
         current_state[5] = self.base_top_left   # Where is our base?
+        u_type, s_type = self.get_unit_type_selected_and_select_type(obs)
+        current_state[6] = u_type # unit type selected
+        current_state[7] = s_type # select type of unit
 
         # Calculate enemy positions for state
         hot_squares = np.zeros(4)
@@ -170,23 +191,26 @@ class HiveMind(base_agent.BaseAgent):
         for i in range(0,4):
             current_state[i+5] = hot_squares[i]
 
-        for ob in obs.observation:
-            print(ob)
-
         if self.previous_action is not None:
-            
-            self.qlearn.learn(str(self.previous_state), self.previous_action, 0, str(current_state))
+            scoreByVital = obs.observation['score_by_vital']
+            reward = scoreByVital[0][0] - scoreByVital[1][0]
+            self.qlearn.learn(str(self.previous_state), self.previous_action, (reward - self.previous_reward), str(current_state))
+            self.previous_reward = reward
 
+        # Exclude unavailable actions
+        excluded_actions = np.setdiff1d(SMART_ACTIONS, obs.observation.available_actions, assume_unique=True)
          # Choose Action
-        rl_action = self.qlearn.choose_action(str(current_state))
+        rl_action = self.qlearn.choose_action(str(current_state), excluded_actions)
+
 
         self.previous_state = current_state
         self.previous_action = rl_action
 
         smart_action, x, y = self.splitAction(self.previous_action)
-        print(str(smart_action))
-        print("-------------------------------------------")
-        print(str(obs.observation.available_actions))
+        if smart_action in self.moves:
+            self.moves[smart_action] += 1
+        else:
+            self.moves[smart_action] = 1
 
         if smart_action == _ATTACK_MINIMAP:
             if 13 in obs.observation.available_actions:
@@ -195,7 +219,8 @@ class HiveMind(base_agent.BaseAgent):
                 return actions.FunctionCall(13, [_NOT_QUEUED, self.transformLocation(int(x) + (x_offset * 8), int(y) + (y_offset * 8))])
 
         elif smart_action in obs.observation.available_actions:
-            args = [[np.random.randint(0, size) for size in arg.sizes] for arg in self.action_spec.functions[smart_action].args]
+            args = [[np.random.randint(0, size) for size in arg.sizes]
+            for arg in self.action_spec[0].functions[smart_action].args]
             return actions.FunctionCall(smart_action, args)
 
         return actions.FUNCTIONS.no_op()

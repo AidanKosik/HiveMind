@@ -10,9 +10,18 @@ class QLearningTable:
         self.gamma = reward_decay
         self.epsilon = e_greedy
         self.q_table = pd.DataFrame(columns=self.actions, dtype=np.float64)
+        self.disallowed_actions = {}
 
-    def choose_action(self, observation):
+    def choose_action(self, observation, excluded_actions=[]):
         self.check_state_exist(observation)
+
+        self.disallowed_actions[observation] = excluded_actions
+
+        state_action = self.q_table.ix[observation, :] 
+
+        for excluded_action in excluded_actions:
+            if excluded_action in state_action.index:
+                del state_action[excluded_action]
         
         if np.random.uniform() < self.epsilon:
             # choose best action
